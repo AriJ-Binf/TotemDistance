@@ -32,7 +32,7 @@ Totems despawn once you are more than 100 yards away from them. When you get wit
 
 All totems are tracked by default. Under game options, AddOns, TotemDistance, Tracked totems, uncheck the ones you don't care about; they no longer appear in the tracker or trigger warnings. That page also has each element's border color. `/totemdistance track` lists what is tracked, and `/totemdistance track windfury off` changes one.
 
-Drag the tracker to move it, then lock it in settings. With no totems down it is hidden; use `/totemdistance test` to show it while you place it. Test mode drops four pretend totems where you stand, so you can walk away and watch the tracker and warnings react.
+Drag the tracker to move it, then turn on **Lock Interface In Place** in settings so it ignores the mouse and clicks pass through it to the game world. With no totems down it is hidden; use `/totemdistance test` to show it while you place it. Test mode drops four pretend totems where you stand, so you can walk away and watch the tracker and warnings react.
 
 ### Totemic Call and Totemic Recall
 
@@ -48,7 +48,7 @@ Open with `/totemdistance`, or in the game options under AddOns, TotemDistance. 
 | --- | --- |
 | `/totemdistance` | Open settings |
 | `/totemdistance on` / `off` | Enable or disable |
-| `/totemdistance lock` / `unlock` | Lock the tracker or allow dragging it |
+| `/totemdistance lock` / `unlock` | Lock the interface in place or allow dragging it |
 | `/totemdistance resetpos` | Move the tracker back to its default spot |
 | `/totemdistance alert on` / `off` | Flashing on-screen warning when leaving range |
 | `/totemdistance sound on` / `off` | Sound when leaving range |

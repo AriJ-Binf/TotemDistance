@@ -5,11 +5,17 @@ panel.name = "TotemDistance"
 local totemsPanel = CreateFrame("Frame", "TotemDistanceTotemsPanel")
 totemsPanel.name = "Tracked totems"
 totemsPanel.parent = panel.name
+-- Frames start shown; the settings window only fires OnShow on a hidden frame,
+-- so without this the first visit shows every control unset.
+panel:Hide()
+totemsPanel:Hide()
 local refreshers = {}
 
 local function RefreshPanel()
+    if not ns.db then return end
     for _, fn in ipairs(refreshers) do fn() end
 end
+ns.RefreshOptions = RefreshPanel
 
 local function MakeLabel(parent, text, template, x, y)
     local fs = parent:CreateFontString(nil, "ARTWORK", template or "GameFontNormal")
@@ -161,7 +167,7 @@ MakeCheckbox(panel, "Enable TotemDistance", 16, -76,
     function() return ns.db.enabled end,
     function(v) ns.db.enabled = v end)
 
-MakeCheckbox(panel, "Lock tracker position", 240, -76,
+MakeCheckbox(panel, "Lock Interface In Place", 240, -76,
     function() return ns.db.locked end,
     function(v)
         ns.db.locked = v
@@ -265,9 +271,8 @@ end)
 resetColors:SetPoint("LEFT", selectNone, "RIGHT", 12, 0)
 
 for _, p in ipairs({ panel, totemsPanel }) do
-    p:SetScript("OnShow", function()
-        if ns.db then RefreshPanel() end
-    end)
+    p:SetScript("OnShow", RefreshPanel)
+    p.OnRefresh = RefreshPanel
 end
 
 local category
@@ -337,7 +342,7 @@ end
 local HELP = {
     "/totemdistance - open settings",
     "/totemdistance on | off - enable or disable",
-    "/totemdistance lock | unlock - lock the tracker or allow dragging it",
+    "/totemdistance lock | unlock - lock the interface in place or allow dragging it",
     "/totemdistance resetpos - move the tracker back to its default spot",
     "/totemdistance alert on | off - flashing on-screen warning when you leave a totem's range",
     "/totemdistance sound on | off - sound when you leave a totem's range",

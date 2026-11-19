@@ -2,6 +2,14 @@
 
 All notable changes to TotemDistance. Newest first.
 
+## 1.4.1
+
+### Fixed
+- The settings pages showed every checkbox unchecked and every slider at its lowest value the first time you opened them, even though the settings were on. They now show your actual settings, which are all on by default.
+
+### Changed
+- "Lock tracker position" is now called "Lock Interface In Place".
+
 ## 1.4.0
 
 ### Changed

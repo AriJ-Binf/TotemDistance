@@ -49,7 +49,7 @@ tracker:SetScript("OnEnter", function(self)
     if ns.db.locked or not GameTooltip then return end
     GameTooltip:SetOwner(self, "ANCHOR_TOP")
     GameTooltip:SetText("TotemDistance")
-    GameTooltip:AddLine("Drag to move. Lock it with /totemdistance lock.", 1, 1, 1)
+    GameTooltip:AddLine("Drag to move. Turn on Lock Interface In Place in settings, or type /totemdistance lock.", 1, 1, 1)
     GameTooltip:Show()
 end)
 tracker:SetScript("OnLeave", function()

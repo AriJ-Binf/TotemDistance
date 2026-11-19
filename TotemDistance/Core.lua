@@ -182,6 +182,7 @@ frame:SetScript("OnEvent", function(_, event, arg1, _, spellID)
         ns.CopyDefaults(ns.defaults, TotemDistanceDB)
         ns.db = TotemDistanceDB
         ns.ApplyTrackerSettings()
+        ns.RefreshOptions()
         frame:UnregisterEvent("ADDON_LOADED")
     elseif event == "PLAYER_TOTEM_UPDATE" then
         if arg1 and arg1 >= 1 and arg1 <= NUM_SLOTS then
