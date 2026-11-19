@@ -241,7 +241,7 @@ local function UpdateRow(row, slot, subject)
         out = remaining < 0
         row.bar:SetValue(math.max(0, math.min(1, remaining / range)))
         row.barText:SetText(string.format("%d / %d yd", math.floor(distance + 0.5), range))
-        local toDespawn = db.despawnYards - distance
+        local toDespawn = ns.DESPAWN_YARDS - distance
         nearDespawn = toDespawn <= db.despawnWarnYards
         if out then
             color = RED
@@ -284,7 +284,7 @@ local function UpdateRow(row, slot, subject)
             if db.despawnSound then PlayAlertSound(DESPAWN_SOUND) end
         end
     elseif distance and subject.despawnWarned
-        and db.despawnYards - distance > db.despawnWarnYards + DESPAWN_REARM then
+        and ns.DESPAWN_YARDS - distance > db.despawnWarnYards + DESPAWN_REARM then
         subject.despawnWarned = nil
         HideAlert(despawnAlert, subject)
     end

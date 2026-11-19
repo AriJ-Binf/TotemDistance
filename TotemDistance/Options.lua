@@ -197,7 +197,7 @@ MakeSlider(panel, "Warning stays on screen for", -240, 1, 10, 0.5,
     Seconds)
 
 MakeLabel(panel, "Despawn warning", "GameFontNormalLarge", 16, -276)
-local despawnNote = MakeLabel(panel, "Totems despawn when you get too far away from them (about 100 yards in Classic). Text size and time on screen match the leaving range warning.", "GameFontHighlightSmall", 16, -298)
+local despawnNote = MakeLabel(panel, "Totems despawn when you are more than 100 yards away from them. Text size and time on screen match the leaving range warning.", "GameFontHighlightSmall", 16, -298)
 despawnNote:SetWidth(580)
 despawnNote:SetJustifyH("LEFT")
 
@@ -209,18 +209,13 @@ MakeCheckbox(panel, "Play a sound", 240, -318,
     function() return ns.db.despawnSound end,
     function(v) ns.db.despawnSound = v end)
 
-MakeSlider(panel, "Totems despawn at", -356, 40, 200, 5,
-    function() return ns.db.despawnYards end,
-    function(v) ns.db.despawnYards = Round(v) end,
-    Yards)
-
-MakeSlider(panel, "Warn this many yards before", -388, 5, 40, 1,
+MakeSlider(panel, "Warn this many yards before", -356, 5, 40, 1,
     function() return ns.db.despawnWarnYards end,
     function(v) ns.db.despawnWarnYards = Round(v) end,
     Yards)
 
 local preview = MakeButton(panel, "Preview warnings", 150, function() ns.PreviewAlerts() end)
-preview:SetPoint("TOPLEFT", 16, -428)
+preview:SetPoint("TOPLEFT", 16, -396)
 
 local resetPosition = MakeButton(panel, "Reset position", 130, function() ns.ResetTrackerPosition() end)
 resetPosition:SetPoint("LEFT", preview, "RIGHT", 12, 0)
@@ -318,10 +313,7 @@ local function PrintDebug()
         tostring(db.enabled), tostring(ns.testMode), tostring(db.locked), tostring(db.alert), tostring(db.sound),
         db.alertSize, db.alertDuration, db.warnYards))
     ns.Print(string.format("despawn: alert=%s sound=%s at=%d warnBefore=%d", tostring(db.despawnAlert),
-        tostring(db.despawnSound), db.despawnYards, db.despawnWarnYards))
-    if ns.lastVanish then
-        ns.Print(string.format("last early vanish: %s at %.1f yd", ns.lastVanish.name, ns.lastVanish.distance))
-    end
+        tostring(db.despawnSound), ns.DESPAWN_YARDS, db.despawnWarnYards))
     local n, w = ns.PlayerWorldPosition()
     local ok, facing = pcall(GetPlayerFacing)
     facing = ok and type(facing) == "number" and not ns.IsSecret(facing) and facing or nil
@@ -354,7 +346,6 @@ local HELP = {
     "/totemdistance duration <1-10> - seconds a warning stays on screen",
     "/totemdistance despawn on | off - warning when a totem is about to despawn",
     "/totemdistance despawnsound on | off - sound with the despawn warning",
-    "/totemdistance despawnat <40-200> - yards at which totems despawn",
     "/totemdistance despawnwarn <5-40> - warn this many yards before despawn",
     "/totemdistance track - list tracked totems; track <totem name> on | off to change one",
     "/totemdistance preview - show both warnings with sample text",
@@ -415,10 +406,6 @@ SlashCmdList["TOTEMDISTANCE"] = function(input)
     elseif cmd == "despawnsound" then
         db.despawnSound = Toggle(rest, db.despawnSound)
         ns.Print(db.despawnSound and "despawn sound on" or "despawn sound off")
-    elseif cmd == "despawnat" then
-        local v = tonumber(rest)
-        if not v then return ns.Print("Usage: /totemdistance despawnat <40-200>") end
-        db.despawnYards = math.floor(math.max(40, math.min(200, v)) + 0.5)
     elseif cmd == "despawnwarn" then
         local v = tonumber(rest)
         if not v then return ns.Print("Usage: /totemdistance despawnwarn <5-40>") end
