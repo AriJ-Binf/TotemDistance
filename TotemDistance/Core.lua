@@ -11,10 +11,16 @@ ns.defaults = {
     locked = false,
     sound = true,
     alert = true,
+    alertSize = 28,
+    alertDuration = 3,
     warnYards = 5,
+    despawnAlert = true,
+    despawnSound = true,
+    despawnYards = 100,
+    despawnWarnYards = 15,
+    untracked = {},
     point = {},
     colors = {},
-    slotEnabled = { true, true, true, true },
     rangeOverrides = {},
 }
 
@@ -93,9 +99,48 @@ end
 
 -- A totem's position is taken from where the player stood and faced when
 -- PLAYER_TOTEM_UPDATE fired.
+-- Totems that vanish this far from the player before their time is up were
+-- probably despawned for distance; reported so the real limit can be checked.
+local VANISH_REPORT_YARDS = 50
+
+-- Reports wait briefly because Totemic Recall's cast can arrive after its totems are gone.
+local REPORT_DELAY = 0.5
+local pendingVanished = {}
+
+local function NoteVanished(entry)
+    local now = GetTime and GetTime()
+    if not now or not entry.startTime or not entry.duration or entry.duration <= 0 then return end
+    if entry.startTime + entry.duration - now < 1 then return end
+    local distance = ns.DistanceFromDrop(entry)
+    if not distance or distance < VANISH_REPORT_YARDS then return end
+    pendingVanished[#pendingVanished + 1] = { name = entry.name, distance = distance, at = now }
+end
+
+local function FlushVanished()
+    local now = GetTime and GetTime()
+    if not now or #pendingVanished == 0 then return end
+    local keep = {}
+    for _, v in ipairs(pendingVanished) do
+        local recalled = ns.lastRecallTime and math.abs(ns.lastRecallTime - v.at) < 2
+        if now - v.at < REPORT_DELAY then
+            keep[#keep + 1] = v
+        elseif not recalled then
+            ns.lastVanish = v
+            ns.Print(string.format("%s vanished early while you were %d yd from it (despawn warning is set to %d yd).",
+                v.name, math.floor(v.distance + 0.5), ns.db.despawnYards))
+        end
+    end
+    pendingVanished = keep
+end
+
+function ns.IsTracked(subject)
+    return not (subject.base and ns.db.untracked[subject.base])
+end
+
 function ns.UpdateSlot(slot)
     local name, startTime, duration, spellID, icon = ReadTotem(slot)
     if not name then
+        if ns.state[slot] then NoteVanished(ns.state[slot]) end
         ns.state[slot] = nil
         return
     end
@@ -105,6 +150,7 @@ function ns.UpdateSlot(slot)
         local range, source, verified = ns.ResolveRange(slot, name, spellID)
         entry = {
             name = name,
+            base = ns.BaseName(name),
             startTime = startTime,
             duration = duration,
             spellID = spellID,
@@ -178,8 +224,11 @@ frame:SetScript("OnEvent", function(_, event, arg1, _, spellID)
             ns.UpdateAllSlots()
         end
     elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
-        if arg1 == "player" and MOVE_SPELLS[SpellName(spellID)] then
+        local spell = arg1 == "player" and SpellName(spellID)
+        if MOVE_SPELLS[spell] then
             ns.MoveTotemsToPlayer()
+        elseif spell == "totemic recall" then
+            ns.lastRecallTime = GetTime and GetTime()
         end
     elseif event == "PLAYER_ENTERING_WORLD" then
         ns.UpdateAllSlots()
@@ -201,5 +250,6 @@ frame:SetScript("OnUpdate", function(_, elapsed)
     sinceUpdate = sinceUpdate + elapsed
     if sinceUpdate < UPDATE_INTERVAL then return end
     ns.UpdateTracker(sinceUpdate)
+    FlushVanished()
     sinceUpdate = 0
 end)

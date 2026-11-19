@@ -12,30 +12,49 @@ ns.ELEMENTS = {
 -- verified = false marks values taken from Classic or inferred; check them
 -- against the in-game tooltip with /totemdistance debug.
 ns.TOTEM_RANGES = {
-    ["searing totem"]            = { range = 20, verified = true },
-    ["magma totem"]              = { range = 8,  verified = true },
-    ["flametongue totem"]        = { range = 30, verified = true },
-    ["frost resistance totem"]   = { range = 30, verified = true },
+    ["searing totem"]            = { slot = 1, range = 20, verified = true },
+    ["magma totem"]              = { slot = 1, range = 8,  verified = true },
+    ["flametongue totem"]        = { slot = 1, range = 30, verified = true },
+    ["frost resistance totem"]   = { slot = 1, range = 30, verified = true },
 
-    ["earthbind totem"]          = { range = 10, verified = true },
-    ["stoneclaw totem"]          = { range = 8,  verified = true },
-    ["stoneskin totem"]          = { range = 30, verified = true },
-    ["strength of earth totem"]  = { range = 30, verified = true },
-    ["tremor totem"]             = { range = 30, verified = true },
+    ["earthbind totem"]          = { slot = 2, range = 10, verified = true },
+    ["stoneclaw totem"]          = { slot = 2, range = 8,  verified = true },
+    ["stoneskin totem"]          = { slot = 2, range = 30, verified = true },
+    ["strength of earth totem"]  = { slot = 2, range = 30, verified = true },
+    ["tremor totem"]             = { slot = 2, range = 30, verified = true },
 
-    ["healing stream totem"]     = { range = 30, verified = true },
-    ["mana spring totem"]        = { range = 30, verified = true },
-    ["fire resistance totem"]    = { range = 30, verified = true },
-    ["poison cleansing totem"]   = { range = 30, verified = false },
-    ["disease cleansing totem"]  = { range = 30, verified = false },
-    ["mana tide totem"]          = { range = 30, verified = false },
+    ["healing stream totem"]     = { slot = 3, range = 30, verified = true },
+    ["mana spring totem"]        = { slot = 3, range = 30, verified = true },
+    ["fire resistance totem"]    = { slot = 3, range = 30, verified = true },
+    ["poison cleansing totem"]   = { slot = 3, range = 30, verified = false },
+    ["disease cleansing totem"]  = { slot = 3, range = 30, verified = false },
+    ["mana tide totem"]          = { slot = 3, range = 30, verified = false },
 
-    ["grace of air totem"]       = { range = 30, verified = true },
-    ["windfury totem"]           = { range = 30, verified = true },
-    ["nature resistance totem"]  = { range = 30, verified = false },
-    ["grounding totem"]          = { range = 30, verified = false },
-    ["sentry totem"]             = { range = 40, verified = false },
+    ["grace of air totem"]       = { slot = 4, range = 30, verified = true },
+    ["windfury totem"]           = { slot = 4, range = 30, verified = true },
+    ["nature resistance totem"]  = { slot = 4, range = 30, verified = false },
+    ["grounding totem"]          = { slot = 4, range = 30, verified = false },
+    ["sentry totem"]             = { slot = 4, range = 40, verified = false },
 }
+
+-- Totems of each element in display order, for the tracked-totems checklist.
+ns.TOTEMS_BY_SLOT = { {}, {}, {}, {} }
+do
+    local order = {}
+    for base in pairs(ns.TOTEM_RANGES) do order[#order + 1] = base end
+    table.sort(order)
+    for _, base in ipairs(order) do
+        local list = ns.TOTEMS_BY_SLOT[ns.TOTEM_RANGES[base].slot]
+        list[#list + 1] = base
+    end
+end
+
+-- "strength of earth totem" -> "Strength of Earth"
+function ns.DisplayName(base)
+    local name = base:gsub(" totem$", "")
+    name = name:gsub("(%a)(%a*)", function(first, rest) return first:upper() .. rest end)
+    return (name:gsub(" Of ", " of "))
+end
 
 ns.DEFAULT_RANGE = 20
 

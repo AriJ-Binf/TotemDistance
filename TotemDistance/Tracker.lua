@@ -1,8 +1,7 @@
 local ADDON, ns = ...
 
--- Distance tracker: how far the player is from each totem's drop point. The
--- totem lands at the player's feet, so the drop point is the player's world
--- position when PLAYER_TOTEM_UPDATE fired.
+-- Distance tracker: how far the player is from each totem's recorded position,
+-- with warnings when the player leaves a totem's range or nears despawn distance.
 
 local NUM_SLOTS = 4
 local ROW_HEIGHT = 34
@@ -12,11 +11,15 @@ local BAR_HEIGHT = 12
 local WIDTH = ICON_SIZE + 4 + 6 + BAR_WIDTH
 local DEFAULT_POINT = { "CENTER", "CENTER", 0, -200 }
 local LEAVE_SOUND = (SOUNDKIT and SOUNDKIT.RAID_WARNING) or 8959
+local DESPAWN_SOUND = (SOUNDKIT and SOUNDKIT.ALARM_CLOCK_WARNING_3) or 12867
+-- Yards the player must come back inside the despawn warning before it can fire again.
+local DESPAWN_REARM = 3
 
 local GREEN = { 0.25, 0.85, 0.30 }
 local YELLOW = { 1.00, 0.80, 0.10 }
 local RED = { 1.00, 0.20, 0.15 }
 local GREY = { 0.50, 0.50, 0.50 }
+local ORANGE = { 1.00, 0.55, 0.10 }
 
 local TEST_ICONS = {
     "Interface\\Icons\\Spell_Fire_SearingTotem",
@@ -97,39 +100,78 @@ local rows = {}
 local testSubjects = {}
 local pulse = 0
 
-local ALERT_DURATION = 3
-local ALERT_FLASH = 1.5
+local ALERT_TOP = -170
+local ALERT_GAP = 12
 
-local alert = CreateFrame("Frame", "TotemDistanceAlert", UIParent)
-alert:SetSize(600, 40)
-alert:SetPoint("TOP", UIParent, "TOP", 0, -170)
-alert:SetFrameStrata("HIGH")
-alert:EnableMouse(false)
-alert:Hide()
-alert.text = alert:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
-alert.text:SetPoint("CENTER")
-if STANDARD_TEXT_FONT then alert.text:SetFont(STANDARD_TEXT_FONT, 28, "THICKOUTLINE") end
-alert.text:SetTextColor(RED[1], RED[2], RED[3])
-alert.elapsed = 0
-alert:SetScript("OnUpdate", function(self, elapsed)
-    self.elapsed = self.elapsed + elapsed
-    local e = self.elapsed
-    if e >= ALERT_DURATION then
-        self:Hide()
-    elseif e < ALERT_FLASH then
-        self:SetAlpha(0.4 + 0.6 * math.abs(math.cos(e * 6)))
-    else
-        self:SetAlpha(1 - (e - ALERT_FLASH) / (ALERT_DURATION - ALERT_FLASH))
-    end
-end)
-ns.alert = alert
+local function AlertFlashTime(duration)
+    return math.min(1.5, duration / 2)
+end
 
-local function ShowAlert(subject)
-    alert.subject = subject
-    alert.text:SetText("Out of " .. subject.name:gsub(" [Tt]otem", "") .. " range!")
+local function NewAlert(name, color)
+    local alert = CreateFrame("Frame", name, UIParent)
+    alert:SetSize(700, 40)
+    alert:SetFrameStrata("HIGH")
+    alert:EnableMouse(false)
+    alert:Hide()
+    alert.text = alert:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    alert.text:SetPoint("CENTER")
+    alert.text:SetTextColor(color[1], color[2], color[3])
     alert.elapsed = 0
-    alert:SetAlpha(1)
-    alert:Show()
+    alert:SetScript("OnUpdate", function(self, elapsed)
+        self.elapsed = self.elapsed + elapsed
+        local e = self.elapsed
+        local duration = ns.db.alertDuration
+        local flash = AlertFlashTime(duration)
+        if e >= duration then
+            self:Hide()
+            self.subject = nil
+        elseif e < flash then
+            self:SetAlpha(0.4 + 0.6 * math.abs(math.cos(e * 6)))
+        else
+            self:SetAlpha(1 - (e - flash) / (duration - flash))
+        end
+    end)
+    return alert
+end
+
+local alert = NewAlert("TotemDistanceAlert", RED)
+local despawnAlert = NewAlert("TotemDistanceDespawnAlert", ORANGE)
+ns.alert = alert
+ns.despawnAlert = despawnAlert
+
+local function ShowAlert(frame, subject, text)
+    frame.subject = subject
+    frame.text:SetText(text)
+    frame.elapsed = 0
+    frame:SetAlpha(1)
+    frame:Show()
+end
+
+local function HideAlert(frame, subject)
+    if frame.subject == subject then
+        frame:Hide()
+        frame.subject = nil
+    end
+end
+
+local function PlayAlertSound(id)
+    pcall(PlaySound, id, "Master")
+end
+
+function ns.ApplyAlertSettings()
+    local size = ns.db.alertSize
+    for i, frame in ipairs({ alert, despawnAlert }) do
+        frame.text:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", size, "THICKOUTLINE")
+        frame:SetHeight(size + 12)
+        frame:ClearAllPoints()
+        frame:SetPoint("TOP", UIParent, "TOP", 0, ALERT_TOP - (i - 1) * (size + 12 + ALERT_GAP))
+    end
+end
+
+-- Shows both alerts with sample text so their size and duration can be judged.
+function ns.PreviewAlerts()
+    ShowAlert(alert, nil, "Out of Strength of Earth range!")
+    ShowAlert(despawnAlert, nil, "Strength of Earth is about to despawn!")
 end
 
 function ns.ApplyTrackerSettings()
@@ -139,6 +181,7 @@ function ns.ApplyTrackerSettings()
     tracker:ClearAllPoints()
     tracker:SetPoint(p[1], UIParent, p[2], p[3], p[4])
     tracker:EnableMouse(not db.locked)
+    ns.ApplyAlertSettings()
 end
 
 function ns.ResetTrackerPosition()
@@ -187,7 +230,7 @@ local function UpdateRow(row, slot, subject)
     row.icon:SetTexture(subject.icon or TEST_ICONS[slot])
     row.label:SetText(ShortName(subject.name))
 
-    local color, out
+    local color, out, nearDespawn
     if not distance then
         color = GREY
         row.bar:SetValue(1)
@@ -198,15 +241,22 @@ local function UpdateRow(row, slot, subject)
         out = remaining < 0
         row.bar:SetValue(math.max(0, math.min(1, remaining / range)))
         row.barText:SetText(string.format("%d / %d yd", math.floor(distance + 0.5), range))
+        local toDespawn = db.despawnYards - distance
+        nearDespawn = toDespawn <= db.despawnWarnYards
         if out then
             color = RED
             row.status:SetText(string.format("OUT by %d yd", math.ceil(-remaining)))
+            if nearDespawn then
+                row.barText:SetText(string.format("despawn in %d yd", math.max(0, math.floor(toDespawn))))
+                row.barText:SetTextColor(ORANGE[1], ORANGE[2], ORANGE[3])
+            end
         else
             color = remaining < db.warnYards and YELLOW or GREEN
             row.status:SetText(string.format("%d yd left", math.floor(remaining)))
         end
     end
 
+    if not nearDespawn then row.barText:SetTextColor(1, 1, 1) end
     row.bar:SetStatusBarColor(color[1], color[2], color[3])
     row.status:SetTextColor(color[1], color[2], color[3])
     row.icon:SetDesaturated(out == true)
@@ -218,14 +268,26 @@ local function UpdateRow(row, slot, subject)
         row.border:SetColorTexture(element[1], element[2], element[3], 1)
     end
 
+    local name = ShortName(subject.name)
     if out and not subject.wasOut then
-        if db.alert then ShowAlert(subject) end
-        if db.sound then PlaySound(LEAVE_SOUND, "Master") end
-    elseif not out and alert.subject == subject then
-        alert:Hide()
-        alert.subject = nil
+        if db.alert then ShowAlert(alert, subject, "Out of " .. name .. " range!") end
+        if db.sound then PlayAlertSound(LEAVE_SOUND) end
+    elseif not out then
+        HideAlert(alert, subject)
     end
     if distance then subject.wasOut = out end
+
+    if nearDespawn and not subject.despawnWarned then
+        subject.despawnWarned = true
+        if db.despawnAlert then
+            ShowAlert(despawnAlert, subject, name .. " is about to despawn!")
+            if db.despawnSound then PlayAlertSound(DESPAWN_SOUND) end
+        end
+    elseif distance and subject.despawnWarned
+        and db.despawnYards - distance > db.despawnWarnYards + DESPAWN_REARM then
+        subject.despawnWarned = nil
+        HideAlert(despawnAlert, subject)
+    end
 end
 
 function ns.UpdateTracker(elapsed)
@@ -241,7 +303,7 @@ function ns.UpdateTracker(elapsed)
             else
                 subject = ns.state[slot]
             end
-            if subject and db.slotEnabled[slot] then
+            if subject and ns.IsTracked(subject) then
                 shown = shown + 1
                 local row = rows[shown] or NewRow(shown)
                 rows[shown] = row

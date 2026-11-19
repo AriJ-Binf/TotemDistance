@@ -2,6 +2,9 @@ local ADDON, ns = ...
 
 local panel = CreateFrame("Frame", "TotemDistanceOptionsPanel")
 panel.name = "TotemDistance"
+local totemsPanel = CreateFrame("Frame", "TotemDistanceTotemsPanel")
+totemsPanel.name = "Tracked totems"
+totemsPanel.parent = panel.name
 local refreshers = {}
 
 local function RefreshPanel()
@@ -19,13 +22,13 @@ local function Round(v)
     return math.floor(v + 0.5)
 end
 
-local function MakeSlider(label, y, minV, maxV, step, get, set, format)
-    MakeLabel(panel, label, "GameFontNormal", 16, y)
+local function MakeSlider(parent, label, y, minV, maxV, step, get, set, format)
+    MakeLabel(parent, label, "GameFontNormal", 16, y)
 
-    local slider = CreateFrame("Slider", nil, panel)
+    local slider = CreateFrame("Slider", nil, parent)
     slider:SetOrientation("HORIZONTAL")
-    slider:SetSize(260, 16)
-    slider:SetPoint("TOPLEFT", 220, y + 2)
+    slider:SetSize(220, 16)
+    slider:SetPoint("TOPLEFT", 260, y + 2)
     slider:SetMinMaxValues(minV, maxV)
     slider:SetValueStep(step)
     if slider.SetObeyStepOnDrag then slider:SetObeyStepOnDrag(true) end
@@ -59,14 +62,16 @@ local function MakeSlider(label, y, minV, maxV, step, get, set, format)
     return slider
 end
 
-local function MakeCheckbox(label, x, y, get, set)
-    local check = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
+local function MakeCheckbox(parent, label, x, y, get, set, small)
+    local check = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
     check:SetPoint("TOPLEFT", x, y)
-    check:SetSize(26, 26)
+    check:SetSize(small and 22 or 26, small and 22 or 26)
     local text = check.Text or check.text
     if not text then
-        text = check:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+        text = check:CreateFontString(nil, "ARTWORK", small and "GameFontHighlightSmall" or "GameFontHighlight")
         text:SetPoint("LEFT", check, "RIGHT", 2, 0)
+    elseif small and text.SetFontObject then
+        text:SetFontObject("GameFontHighlightSmall")
     end
     text:SetText(label)
     check:SetScript("OnClick", function(self)
@@ -76,6 +81,14 @@ local function MakeCheckbox(label, x, y, get, set)
         check:SetChecked(get())
     end
     return check
+end
+
+local function MakeButton(parent, text, width, onClick)
+    local button = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    button:SetSize(width, 24)
+    button:SetText(text)
+    button:SetScript("OnClick", onClick)
+    return button
 end
 
 local function OpenColorPicker(slot)
@@ -111,16 +124,10 @@ local function OpenColorPicker(slot)
     end
 end
 
-local function MakeColorRow(slot, y)
-    local element = ns.ELEMENTS[slot]
-
-    MakeCheckbox(element.label .. " totem", 16, y + 4,
-        function() return ns.db.slotEnabled[slot] end,
-        function(v) ns.db.slotEnabled[slot] = v end)
-
-    local swatch = CreateFrame("Button", nil, panel)
-    swatch:SetSize(36, 20)
-    swatch:SetPoint("TOPLEFT", 220, y)
+local function MakeSwatch(parent, slot, relativeTo)
+    local swatch = CreateFrame("Button", nil, parent)
+    swatch:SetSize(28, 16)
+    swatch:SetPoint("LEFT", relativeTo, "RIGHT", 8, 0)
     local border = swatch:CreateTexture(nil, "BACKGROUND")
     border:SetAllPoints()
     border:SetColorTexture(1, 1, 1, 0.9)
@@ -128,86 +135,156 @@ local function MakeColorRow(slot, y)
     fill:SetPoint("TOPLEFT", 2, -2)
     fill:SetPoint("BOTTOMRIGHT", -2, 2)
     swatch:SetScript("OnClick", function() OpenColorPicker(slot) end)
-
-    local hint = swatch:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    hint:SetPoint("LEFT", swatch, "RIGHT", 10, 0)
-    hint:SetText("Click to change color")
-
     refreshers[#refreshers + 1] = function()
         local c = ns.GetColor(slot)
         fill:SetColorTexture(c[1], c[2], c[3], 1)
     end
+    return swatch
 end
 
+local function Percent(v) return string.format("%d%%", Round(v)) end
+local function Yards(v) return string.format("%d yd", Round(v)) end
+local function Seconds(v) return string.format("%.1f s", v) end
+
+local function ApplyAlerts()
+    ns.ApplyAlertSettings()
+end
+
+-- Main page: tracker and alerts.
+
 MakeLabel(panel, "TotemDistance", "GameFontNormalHuge", 16, -16)
-local subtitle = MakeLabel(panel, "Shows how far you are from each of your totems and warns you when you walk out of its range. Distances are measured from where each totem landed around you when you dropped it.", "GameFontHighlightSmall", 16, -46)
-subtitle:SetWidth(560)
+local subtitle = MakeLabel(panel, "Shows how far you are from each of your totems and warns you when you walk out of its range or far enough away that it is about to despawn. Choose which totems to track under Tracked totems.", "GameFontHighlightSmall", 16, -46)
+subtitle:SetWidth(580)
 subtitle:SetJustifyH("LEFT")
 
-MakeCheckbox("Enable TotemDistance", 16, -80,
+MakeCheckbox(panel, "Enable TotemDistance", 16, -76,
     function() return ns.db.enabled end,
     function(v) ns.db.enabled = v end)
 
-MakeCheckbox("Lock position", 16, -106,
+MakeCheckbox(panel, "Lock tracker position", 240, -76,
     function() return ns.db.locked end,
     function(v)
         ns.db.locked = v
         ns.ApplyTrackerSettings()
     end)
 
-MakeCheckbox("Flash a warning on screen when leaving range", 16, -132,
+MakeSlider(panel, "Turn yellow this close to the edge", -114, 0, 15, 1,
+    function() return ns.db.warnYards end,
+    function(v) ns.db.warnYards = v end,
+    Yards)
+
+MakeLabel(panel, "Leaving range warning", "GameFontNormalLarge", 16, -148)
+
+MakeCheckbox(panel, "Show warning on screen", 16, -170,
     function() return ns.db.alert end,
     function(v) ns.db.alert = v end)
 
-MakeCheckbox("Play a sound when leaving range", 16, -158,
+MakeCheckbox(panel, "Play a sound", 240, -170,
     function() return ns.db.sound end,
     function(v) ns.db.sound = v end)
 
-MakeSlider("Warn when this close to the edge", -200, 0, 15, 1,
-    function() return ns.db.warnYards end,
-    function(v) ns.db.warnYards = v end,
-    function(v) return string.format("%d yd", Round(v)) end)
+MakeSlider(panel, "Warning text size", -208, 12, 48, 1,
+    function() return ns.db.alertSize end,
+    function(v)
+        ns.db.alertSize = Round(v)
+        ApplyAlerts()
+    end,
+    function(v) return string.format("%d", Round(v)) end)
 
-MakeLabel(panel, "Totems and icon border colors", "GameFontNormalLarge", 16, -240)
-for slot = 1, 4 do
-    MakeColorRow(slot, -268 - (slot - 1) * 30)
+MakeSlider(panel, "Warning stays on screen for", -240, 1, 10, 0.5,
+    function() return ns.db.alertDuration end,
+    function(v) ns.db.alertDuration = v end,
+    Seconds)
+
+MakeLabel(panel, "Despawn warning", "GameFontNormalLarge", 16, -276)
+local despawnNote = MakeLabel(panel, "Totems despawn when you get too far away from them (about 100 yards in Classic). Text size and time on screen match the leaving range warning.", "GameFontHighlightSmall", 16, -298)
+despawnNote:SetWidth(580)
+despawnNote:SetJustifyH("LEFT")
+
+MakeCheckbox(panel, "Show warning on screen", 16, -318,
+    function() return ns.db.despawnAlert end,
+    function(v) ns.db.despawnAlert = v end)
+
+MakeCheckbox(panel, "Play a sound", 240, -318,
+    function() return ns.db.despawnSound end,
+    function(v) ns.db.despawnSound = v end)
+
+MakeSlider(panel, "Totems despawn at", -356, 40, 200, 5,
+    function() return ns.db.despawnYards end,
+    function(v) ns.db.despawnYards = Round(v) end,
+    Yards)
+
+MakeSlider(panel, "Warn this many yards before", -388, 5, 40, 1,
+    function() return ns.db.despawnWarnYards end,
+    function(v) ns.db.despawnWarnYards = Round(v) end,
+    Yards)
+
+local preview = MakeButton(panel, "Preview warnings", 150, function() ns.PreviewAlerts() end)
+preview:SetPoint("TOPLEFT", 16, -428)
+
+local resetPosition = MakeButton(panel, "Reset position", 130, function() ns.ResetTrackerPosition() end)
+resetPosition:SetPoint("LEFT", preview, "RIGHT", 12, 0)
+
+local test = MakeButton(panel, "Toggle test totems", 160, function() ns.SetTestMode(not ns.testMode) end)
+test:SetPoint("LEFT", resetPosition, "RIGHT", 12, 0)
+
+-- Second page: which totems to track, by element, with each element's color.
+
+local COLUMN_WIDTH = 150
+local ROW_STEP = 24
+
+MakeLabel(totemsPanel, "Tracked totems", "GameFontNormalHuge", 16, -16)
+local totemsNote = MakeLabel(totemsPanel, "Only checked totems appear in the tracker and trigger warnings. Click a color to change that element's icon border.", "GameFontHighlightSmall", 16, -46)
+totemsNote:SetWidth(580)
+totemsNote:SetJustifyH("LEFT")
+
+local function SetAllTracked(tracked)
+    for base in pairs(ns.TOTEM_RANGES) do
+        ns.db.untracked[base] = (not tracked) or nil
+    end
+    RefreshPanel()
 end
 
-local resetColors = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-resetColors:SetSize(140, 24)
-resetColors:SetPoint("TOPLEFT", 16, -392)
-resetColors:SetText("Reset colors")
-resetColors:SetScript("OnClick", function()
+for slot = 1, 4 do
+    local x = 16 + (slot - 1) * COLUMN_WIDTH
+    local header = MakeLabel(totemsPanel, ns.ELEMENTS[slot].label, "GameFontNormalLarge", x, -76)
+    MakeSwatch(totemsPanel, slot, header)
+    for i, base in ipairs(ns.TOTEMS_BY_SLOT[slot]) do
+        MakeCheckbox(totemsPanel, ns.DisplayName(base), x, -98 - (i - 1) * ROW_STEP,
+            function() return not ns.db.untracked[base] end,
+            function(v) ns.db.untracked[base] = (not v) or nil end,
+            true)
+    end
+end
+
+local selectAll = MakeButton(totemsPanel, "Track all", 110, function() SetAllTracked(true) end)
+selectAll:SetPoint("TOPLEFT", 16, -260)
+
+local selectNone = MakeButton(totemsPanel, "Track none", 110, function() SetAllTracked(false) end)
+selectNone:SetPoint("LEFT", selectAll, "RIGHT", 12, 0)
+
+local resetColors = MakeButton(totemsPanel, "Reset colors", 120, function()
     ns.ResetColors()
     RefreshPanel()
 end)
+resetColors:SetPoint("LEFT", selectNone, "RIGHT", 12, 0)
 
-local resetPosition = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-resetPosition:SetSize(140, 24)
-resetPosition:SetPoint("LEFT", resetColors, "RIGHT", 12, 0)
-resetPosition:SetText("Reset position")
-resetPosition:SetScript("OnClick", function()
-    ns.ResetTrackerPosition()
-end)
-
-local test = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-test:SetSize(180, 24)
-test:SetPoint("LEFT", resetPosition, "RIGHT", 12, 0)
-test:SetText("Toggle test totems")
-test:SetScript("OnClick", function()
-    ns.SetTestMode(not ns.testMode)
-end)
-
-panel:SetScript("OnShow", function()
-    if ns.db then RefreshPanel() end
-end)
+for _, p in ipairs({ panel, totemsPanel }) do
+    p:SetScript("OnShow", function()
+        if ns.db then RefreshPanel() end
+    end)
+end
 
 local category
 if Settings and Settings.RegisterCanvasLayoutCategory then
     category = Settings.RegisterCanvasLayoutCategory(panel, panel.name)
     Settings.RegisterAddOnCategory(category)
+    if Settings.RegisterCanvasLayoutSubcategory then
+        Settings.RegisterCanvasLayoutSubcategory(category, totemsPanel, totemsPanel.name)
+    end
 elseif InterfaceOptions_AddCategory then
     InterfaceOptions_AddCategory(panel)
+    InterfaceOptions_AddCategory(totemsPanel)
 end
 
 function ns.OpenOptions()
@@ -237,8 +314,14 @@ end
 local function PrintDebug()
     local db = ns.db
     ns.Print("--- debug ---")
-    ns.Print(string.format("enabled=%s test=%s locked=%s alert=%s sound=%s warn=%d",
-        tostring(db.enabled), tostring(ns.testMode), tostring(db.locked), tostring(db.alert), tostring(db.sound), db.warnYards))
+    ns.Print(string.format("enabled=%s test=%s locked=%s alert=%s sound=%s size=%d duration=%.1f warn=%d",
+        tostring(db.enabled), tostring(ns.testMode), tostring(db.locked), tostring(db.alert), tostring(db.sound),
+        db.alertSize, db.alertDuration, db.warnYards))
+    ns.Print(string.format("despawn: alert=%s sound=%s at=%d warnBefore=%d", tostring(db.despawnAlert),
+        tostring(db.despawnSound), db.despawnYards, db.despawnWarnYards))
+    if ns.lastVanish then
+        ns.Print(string.format("last early vanish: %s at %.1f yd", ns.lastVanish.name, ns.lastVanish.distance))
+    end
     local n, w = ns.PlayerWorldPosition()
     local ok, facing = pcall(GetPlayerFacing)
     facing = ok and type(facing) == "number" and not ns.IsSecret(facing) and facing or nil
@@ -267,6 +350,14 @@ local HELP = {
     "/totemdistance alert on | off - flashing on-screen warning when you leave a totem's range",
     "/totemdistance sound on | off - sound when you leave a totem's range",
     "/totemdistance warn <0-15> - yards from the edge where the bar turns yellow",
+    "/totemdistance size <12-48> - warning text size",
+    "/totemdistance duration <1-10> - seconds a warning stays on screen",
+    "/totemdistance despawn on | off - warning when a totem is about to despawn",
+    "/totemdistance despawnsound on | off - sound with the despawn warning",
+    "/totemdistance despawnat <40-200> - yards at which totems despawn",
+    "/totemdistance despawnwarn <5-40> - warn this many yards before despawn",
+    "/totemdistance track - list tracked totems; track <totem name> on | off to change one",
+    "/totemdistance preview - show both warnings with sample text",
     "/totemdistance color <1-4> <RRGGBB> - set color (1 Fire, 2 Earth, 3 Water, 4 Air)",
     "/totemdistance range <1-4> <yards|auto> - override range for a slot",
     "/totemdistance here - reset all active totems to where they would land if recast now",
@@ -308,6 +399,54 @@ SlashCmdList["TOTEMDISTANCE"] = function(input)
     elseif cmd == "sound" then
         db.sound = Toggle(rest, db.sound)
         ns.Print(db.sound and "leave-range sound on" or "leave-range sound off")
+    elseif cmd == "size" then
+        local v = tonumber(rest)
+        if not v then return ns.Print("Usage: /totemdistance size <12-48>") end
+        db.alertSize = math.floor(math.max(12, math.min(48, v)) + 0.5)
+        ns.ApplyAlertSettings()
+        ns.PreviewAlerts()
+    elseif cmd == "duration" then
+        local v = tonumber(rest)
+        if not v then return ns.Print("Usage: /totemdistance duration <1-10>") end
+        db.alertDuration = math.max(1, math.min(10, v))
+    elseif cmd == "despawn" then
+        db.despawnAlert = Toggle(rest, db.despawnAlert)
+        ns.Print(db.despawnAlert and "despawn warning on" or "despawn warning off")
+    elseif cmd == "despawnsound" then
+        db.despawnSound = Toggle(rest, db.despawnSound)
+        ns.Print(db.despawnSound and "despawn sound on" or "despawn sound off")
+    elseif cmd == "despawnat" then
+        local v = tonumber(rest)
+        if not v then return ns.Print("Usage: /totemdistance despawnat <40-200>") end
+        db.despawnYards = math.floor(math.max(40, math.min(200, v)) + 0.5)
+    elseif cmd == "despawnwarn" then
+        local v = tonumber(rest)
+        if not v then return ns.Print("Usage: /totemdistance despawnwarn <5-40>") end
+        db.despawnWarnYards = math.floor(math.max(5, math.min(40, v)) + 0.5)
+    elseif cmd == "preview" then
+        ns.PreviewAlerts()
+    elseif cmd == "track" then
+        local nameText, state = rest:lower():match("^(.-)%s+(on)$")
+        if not nameText then nameText, state = rest:lower():match("^(.-)%s+(off)$") end
+        if rest == "" then
+            local on, off = {}, {}
+            for slot = 1, 4 do
+                for _, base in ipairs(ns.TOTEMS_BY_SLOT[slot]) do
+                    local list = db.untracked[base] and off or on
+                    list[#list + 1] = ns.DisplayName(base)
+                end
+            end
+            ns.Print("Tracked: " .. (#on > 0 and table.concat(on, ", ") or "none"))
+            ns.Print("Not tracked: " .. (#off > 0 and table.concat(off, ", ") or "none"))
+            return
+        end
+        local base = nameText and ns.BaseName(nameText)
+        if base and not ns.TOTEM_RANGES[base] then base = base .. " totem" end
+        if not (base and ns.TOTEM_RANGES[base]) then
+            return ns.Print("Usage: /totemdistance track <totem name> on | off, for example: track windfury off")
+        end
+        db.untracked[base] = (state == "off") or nil
+        ns.Print(string.format("%s %s", ns.DisplayName(base), state == "off" and "not tracked" or "tracked"))
     elseif cmd == "warn" then
         local v = tonumber(rest)
         if not v then return ns.Print("Usage: /totemdistance warn <0-15>") end
@@ -355,5 +494,5 @@ SlashCmdList["TOTEMDISTANCE"] = function(input)
     else
         for _, line in ipairs(HELP) do ns.Print(line) end
     end
-    if panel:IsShown() then RefreshPanel() end
+    if panel:IsShown() or totemsPanel:IsShown() then RefreshPanel() end
 end
