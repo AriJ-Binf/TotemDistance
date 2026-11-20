@@ -2,7 +2,7 @@
 ## Title: TotemDistance
 ## Notes: Shows how far you are from each of your totems and warns you when you walk out of its range.
 ## Author: ari-jimenez
-## Version: 1.5.1
+## Version: 1.5.2
 ## IconTexture: Interface\Icons\Spell_Nature_ManaRegenTotem
 ## SavedVariables: TotemDistanceDB
 

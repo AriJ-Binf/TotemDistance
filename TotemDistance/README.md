@@ -75,6 +75,7 @@ Open with `/totemdistance`, or in the game options under AddOns, TotemDistance. 
 ## Known limits
 
 - In dungeons and raids your position is hidden from addons, so the tracker shows `no position here` and no warnings fire.
+- In combat the game hides totem details from addons. Totems dropped in combat get a bar built from your cast, timed with the duration the game last reported for that totem. The first time you ever drop a totem in combat, before the addon has seen its duration, its bar has no timer until combat ends.
 - Totem placement (2.5 yards, in the pattern above) follows the original game's behavior and may be off by a yard or so.
 - Totem names are matched in English. On other locales, ranges come from the spell tooltip, which also expects English "yards" text. Use `/totemdistance range` to set them manually.
 - Ranges marked `verified = false` in `Data.lua` come from Classic or are guesses. Compare them with the in-game tooltips.

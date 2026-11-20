@@ -2,6 +2,12 @@
 
 All notable changes to TotemDistance. Newest first.
 
+## 1.5.2
+
+### Fixed
+- Totems dropped in combat, for example a recast Searing Totem after a Totemic Call, got no bar until combat ended. In combat the game hides totem details from addons, so the bar is now built from your cast instead. It shows right away, and once combat ends it picks up the game's real details without moving.
+- In combat, a bar's timer uses the duration the game last reported for that totem. The addon remembers durations between sessions.
+
 ## 1.5.1
 
 ### Fixed

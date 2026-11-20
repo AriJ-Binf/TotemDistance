@@ -20,6 +20,8 @@ ns.defaults = {
     despawnSound = true,
     despawnWarnYards = 15,
     untracked = {},
+    -- Last duration the game reported for each totem, used for bars made in combat.
+    durations = {},
     point = {},
     colors = {},
     rangeOverrides = {},
@@ -138,20 +140,88 @@ end
 -- bar, even if the game still reports the old totem's start time.
 local RECAST_WINDOW = 2
 local recentCasts = {}
+-- Totem buttons the player just pressed, by base name. In combat the game can
+-- hide both the totem's details and the cast's spell, so a press followed by
+-- PLAYER_TOTEM_UPDATE for that element is taken as the cast.
+local PRESS_WINDOW = 1.5
+local recentPresses = {}
 
-function ns.NoteTotemCast(spellName)
+local function IsFresh(entry, base, since)
+    return entry and entry.base == base and not entry.hidden and (entry.createdAt or 0) >= since
+end
+
+-- Builds a bar from the cast alone, for when the game hides the totem's details
+-- (in combat). The real details replace these once the game shows them again.
+local function CreateFromCast(slot, base, spellID, castAt)
+    local name = ns.DisplayName(base) .. " Totem"
+    local range, source, verified = ns.ResolveRange(slot, name, spellID)
+    local duration = ns.db and ns.db.durations[base]
+    local icon
+    local getTexture = (C_Spell and C_Spell.GetSpellTexture) or GetSpellTexture
+    if getTexture then
+        local ok, texture = pcall(getTexture, spellID or name)
+        if ok then icon = texture end
+    end
+    local entry = {
+        name = name,
+        base = base,
+        startTime = castAt,
+        duration = duration,
+        expires = duration and castAt + duration or nil,
+        spellID = spellID,
+        icon = icon,
+        range = range,
+        source = source,
+        verified = verified,
+        createdAt = GetTime(),
+        fromCast = true,
+    }
+    entry.worldN, entry.worldW = ns.TotemPlacement(slot)
+    ns.state[slot] = entry
+end
+
+local function IsHidden(slot)
+    return ReadTotem(slot) == "unknown"
+end
+
+function ns.NoteTotemCast(spellName, spellID)
     local base = spellName and ns.BaseName(spellName)
-    if not (base and ns.TOTEM_RANGES[base]) then return false end
+    local info = base and ns.TOTEM_RANGES[base]
+    if not info then return false end
+    local now = GetTime()
+    recentPresses[base] = nil
     for slot = 1, NUM_SLOTS do
-        local entry = ns.state[slot]
-        if entry and entry.base == base and not entry.hidden
-            and GetTime() - (entry.createdAt or 0) < MISSING_GRACE then
-            return true
+        if IsFresh(ns.state[slot], base, now - MISSING_GRACE) then return true end
+    end
+    recentCasts[base] = now
+    ns.UpdateAllSlots()
+    if IsHidden(info.slot) and not IsFresh(ns.state[info.slot], base, now) then
+        CreateFromCast(info.slot, base, spellID, now)
+    end
+    return true
+end
+
+function ns.NoteTotemPress(spellName, spellID)
+    local base = spellName and ns.BaseName(spellName)
+    if not (base and ns.TOTEM_RANGES[base]) then return end
+    recentPresses[base] = { time = GetTime(), spellID = spellID }
+end
+
+-- Called after PLAYER_TOTEM_UPDATE for a slot the game won't describe.
+local function MatchPress(slot)
+    if not IsHidden(slot) then return end
+    local now = GetTime()
+    for base, press in pairs(recentPresses) do
+        if now - press.time > PRESS_WINDOW then
+            recentPresses[base] = nil
+        elseif ns.TOTEM_RANGES[base].slot == slot then
+            recentPresses[base] = nil
+            if not IsFresh(ns.state[slot], base, press.time) then
+                CreateFromCast(slot, base, press.spellID, now)
+            end
+            return
         end
     end
-    recentCasts[base] = GetTime()
-    ns.UpdateAllSlots()
-    return true
 end
 
 local function IsSameTotem(entry, name, startTime)
@@ -195,6 +265,25 @@ function ns.UpdateSlot(slot)
     end
 
     local base = ns.BaseName(name)
+    if ns.db and type(duration) == "number" and duration > 0 then
+        ns.db.durations[base] = duration
+    end
+
+    if entry and entry.fromCast and entry.base == base then
+        entry.fromCast = nil
+        entry.name, entry.startTime, entry.duration = name, startTime, duration
+        entry.icon = icon or entry.icon
+        entry.spellID = spellID or entry.spellID
+        if type(startTime) == "number" and type(duration) == "number" and duration > 0
+            and startTime + duration > GetTime() then
+            entry.expires = startTime + duration
+        end
+        entry.missingSince = nil
+        recentCasts[base] = nil
+        CheckTimer(entry)
+        return
+    end
+
     local castAt = recentCasts[base]
     if castAt and GetTime() - castAt > RECAST_WINDOW then
         recentCasts[base] = nil
@@ -292,7 +381,21 @@ function ns.ClearAllBars(reason)
 end
 
 local function OnCastAttempt(name)
-    if name and CLEAR_SPELLS[name] then ns.ClearAllBars("Totemic Recall cast") end
+    if not name then return end
+    if CLEAR_SPELLS[name] then
+        ns.ClearAllBars("Totemic Recall cast")
+    else
+        ns.NoteTotemPress(name)
+    end
+end
+
+local function OnCastFailed(name)
+    if not name then return end
+    if CLEAR_SPELLS[name] then
+        ns.ClearAllBars("Totemic Recall cast")
+    else
+        recentPresses[ns.BaseName(name)] = nil
+    end
 end
 
 -- Catches button presses, macros and /cast before the game checks whether the
@@ -349,7 +452,7 @@ frame:SetScript("OnEvent", function(_, event, arg1, ...)
         return
     elseif event == "UNIT_SPELLCAST_FAILED" or event == "UNIT_SPELLCAST_FAILED_QUIET" then
         local _, spellID = ...
-        if arg1 == "player" then OnCastAttempt(SpellName(spellID)) end
+        if arg1 == "player" then OnCastFailed(SpellName(spellID)) end
         return
     end
     local _, spellID = ...
@@ -362,8 +465,9 @@ frame:SetScript("OnEvent", function(_, event, arg1, ...)
         ns.RefreshOptions()
         frame:UnregisterEvent("ADDON_LOADED")
     elseif event == "PLAYER_TOTEM_UPDATE" then
-        if arg1 and arg1 >= 1 and arg1 <= NUM_SLOTS then
+        if type(arg1) == "number" and not ns.IsSecret(arg1) and arg1 >= 1 and arg1 <= NUM_SLOTS then
             ns.UpdateSlot(arg1)
+            MatchPress(arg1)
         else
             ns.UpdateAllSlots()
         end
@@ -372,7 +476,7 @@ frame:SetScript("OnEvent", function(_, event, arg1, ...)
         local name = SpellName(spellID)
         if MOVE_SPELLS[name] then
             ns.MoveTotemsToPlayer()
-        elseif not ns.NoteTotemCast(name) then
+        elseif not ns.NoteTotemCast(name, spellID) then
             OnCastAttempt(name)
         end
     elseif event == "PLAYER_ENTERING_WORLD" then
