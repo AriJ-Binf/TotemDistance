@@ -39,7 +39,7 @@ Drag the tracker to move it, then turn on **Lock Interface In Place** in setting
 ### Totemic Call and Totemic Recall
 
 - **Totemic Call** (formerly Totemic Projection) moves your totems back around you, to the spots they would take if you recast them. The game does not report this as a totem change, so the addon watches for the cast and re-places every active totem the same way.
-- **Totemic Recall** destroys your totems; the game reports them as gone and the addon clears them.
+- **Totemic Recall** clears every bar the moment you try to cast it, whether or not the cast works (for example with no totems down). Pressing the button, a macro, or `/cast Totemic Recall` all count. Use it to clear a bar that got stuck.
 - If a position ever drifts, `/totemdistance here` re-places all active totems around you as if you had just cast them.
 
 ## Settings

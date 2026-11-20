@@ -154,6 +154,13 @@ local function HideAlert(frame, subject)
     end
 end
 
+function ns.HideAlerts()
+    for _, frame in ipairs({ alert, despawnAlert }) do
+        frame:Hide()
+        frame.subject = nil
+    end
+end
+
 local function PlayAlertSound(id)
     pcall(PlaySound, id, "Master")
 end

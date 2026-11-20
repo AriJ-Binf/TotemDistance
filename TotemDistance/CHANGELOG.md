@@ -2,6 +2,19 @@
 
 All notable changes to TotemDistance. Newest first.
 
+## 1.5.1
+
+### Fixed
+- A totem recast after its previous copy expired, for example Searing Totem after a Totemic Call, sometimes got no bar. The game can briefly report the new totem with the old totem's start time, which made it look already expired. A successful totem cast now always gets a fresh bar, timed from the cast.
+
+### Changed
+- `/totemdistance debug` also shows what the game reports for each totem slot: the totem's name, when it started, and how long it lasts.
+
+## 1.5.0
+
+### New
+- Casting Totemic Recall clears every tracker bar immediately. This also happens when the cast fails, for example when no totems are down or you are out of mana: pressing the button, a macro, or `/cast Totemic Recall` is enough. Totems you drop afterwards get new bars as usual.
+
 ## 1.4.2
 
 ### Fixed

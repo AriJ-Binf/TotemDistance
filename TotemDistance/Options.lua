@@ -339,6 +339,18 @@ local function PrintDebug()
         if entry and entry.hidden then
             ns.Print(string.format("    hidden: %s", entry.hidden))
         end
+        local ok, have, name, start, duration = pcall(GetTotemInfo, slot)
+        if ok and not (ns.IsSecret(have) or ns.IsSecret(name) or ns.IsSecret(start) or ns.IsSecret(duration)) then
+            if not have or name == "" then
+                ns.Print("    game reports: nothing")
+            else
+                ns.Print(string.format("    game reports: %s, started %s s ago, lasts %s s", name,
+                type(start) == "number" and string.format("%.1f", GetTime() - start) or "?",
+                    tostring(duration)))
+            end
+        else
+            ns.Print("    game reports: hidden values")
+        end
     end
     if #ns.history == 0 then
         ns.Print("recently removed: none")

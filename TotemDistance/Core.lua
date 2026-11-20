@@ -134,6 +134,26 @@ local function Forget(slot, reason)
     ns.state[slot] = nil
 end
 
+-- Totem spells the player just cast, by base name. A recast always gets a fresh
+-- bar, even if the game still reports the old totem's start time.
+local RECAST_WINDOW = 2
+local recentCasts = {}
+
+function ns.NoteTotemCast(spellName)
+    local base = spellName and ns.BaseName(spellName)
+    if not (base and ns.TOTEM_RANGES[base]) then return false end
+    for slot = 1, NUM_SLOTS do
+        local entry = ns.state[slot]
+        if entry and entry.base == base and not entry.hidden
+            and GetTime() - (entry.createdAt or 0) < MISSING_GRACE then
+            return true
+        end
+    end
+    recentCasts[base] = GetTime()
+    ns.UpdateAllSlots()
+    return true
+end
+
 local function IsSameTotem(entry, name, startTime)
     if entry.name ~= name then return false end
     if type(entry.startTime) ~= "number" or type(startTime) ~= "number" then
@@ -174,16 +194,24 @@ function ns.UpdateSlot(slot)
         return
     end
 
-    if entry and IsSameTotem(entry, name, startTime) then
+    local base = ns.BaseName(name)
+    local castAt = recentCasts[base]
+    if castAt and GetTime() - castAt > RECAST_WINDOW then
+        recentCasts[base] = nil
+        castAt = nil
+    end
+    local recast = castAt and entry and entry.base == base and entry.createdAt < castAt
+    if entry and IsSameTotem(entry, name, startTime) and not recast then
         entry.missingSince = nil
         CheckTimer(entry)
         return
     end
+    recentCasts[base] = nil
 
     local range, source, verified = ns.ResolveRange(slot, name, spellID)
     entry = {
         name = name,
-        base = ns.BaseName(name),
+        base = base,
         startTime = startTime,
         duration = duration,
         spellID = spellID,
@@ -191,9 +219,16 @@ function ns.UpdateSlot(slot)
         range = range,
         source = source,
         verified = verified,
+        createdAt = GetTime(),
     }
+    -- A totem that is new to us but whose reported timer is already over means
+    -- the game is still reporting the previous totem's start time. Time it from
+    -- the cast instead, or leave it to the game when the cast wasn't seen.
     if type(startTime) == "number" and type(duration) == "number" and duration > 0 then
         entry.expires = startTime + duration
+        if entry.expires <= GetTime() then
+            entry.expires = castAt and castAt + duration or nil
+        end
     end
     entry.worldN, entry.worldW = ns.TotemPlacement(slot)
     ns.state[slot] = entry
@@ -214,9 +249,11 @@ function ns.SetTestMode(enabled)
 end
 
 -- Spells that move all active totems back around the player, to the spots
--- they would take if recast now. Totemic Recall
--- destroys them instead, which PLAYER_TOTEM_UPDATE already reports.
+-- they would take if recast now.
 local MOVE_SPELLS = { ["totemic call"] = true, ["totemic projection"] = true }
+-- Spells that clear every bar as soon as the player tries to cast them, even
+-- if the cast fails because no totems are down.
+local CLEAR_SPELLS = { ["totemic recall"] = true }
 
 local function SpellName(spellID)
     if type(spellID) ~= "number" or ns.IsSecret(spellID) then return nil end
@@ -243,10 +280,79 @@ function ns.MoveTotemsToPlayer()
     return moved
 end
 
+-- Hides every bar, including test totems. A totem the game still lists stays
+-- hidden; a newly dropped totem gets a bar again.
+function ns.ClearAllBars(reason)
+    for slot = 1, NUM_SLOTS do
+        local entry = ns.state[slot]
+        if entry then ns.HideEntry(entry, reason) end
+        if ns.testMode then ns.HideEntry(ns.TestSubject(slot), reason) end
+    end
+    ns.HideAlerts()
+end
+
+local function OnCastAttempt(name)
+    if name and CLEAR_SPELLS[name] then ns.ClearAllBars("Totemic Recall cast") end
+end
+
+-- Catches button presses, macros and /cast before the game checks whether the
+-- spell can be cast; a press with no totems down produces no cast events.
+local function ActionSpellName(action)
+    local kind, id = GetActionInfo(action)
+    if kind == "macro" and GetMacroSpell then
+        kind, id = "spell", GetMacroSpell(id)
+    end
+    if kind == "spell" then return SpellName(id) end
+end
+
+local function SpellNameFromText(text)
+    if type(text) ~= "string" or ns.IsSecret(text) then return nil end
+    return (string.lower(text):gsub("%s*%b()", ""):gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+local function HookCast(fnName, toName)
+    if not (hooksecurefunc and _G[fnName]) then return end
+    hooksecurefunc(fnName, function(value)
+        if not ns.db then return end
+        local ok, name = pcall(toName, value)
+        if ok then OnCastAttempt(name) end
+    end)
+end
+
+if GetActionInfo then HookCast("UseAction", ActionSpellName) end
+HookCast("CastSpellByName", SpellNameFromText)
+HookCast("CastSpellByID", SpellName)
+if C_Spell and C_Spell.CastSpell and hooksecurefunc then
+    hooksecurefunc(C_Spell, "CastSpell", function(spell)
+        if not ns.db then return end
+        local ok, name = pcall(function()
+            return type(spell) == "number" and SpellName(spell) or SpellNameFromText(spell)
+        end)
+        if ok then OnCastAttempt(name) end
+    end)
+end
+
 local frame = CreateFrame("Frame")
 ns.eventFrame = frame
 
-frame:SetScript("OnEvent", function(_, event, arg1, _, spellID)
+local CAST_EVENTS = {
+    "UNIT_SPELLCAST_SENT",
+    "UNIT_SPELLCAST_FAILED",
+    "UNIT_SPELLCAST_FAILED_QUIET",
+    "UNIT_SPELLCAST_SUCCEEDED",
+}
+
+frame:SetScript("OnEvent", function(_, event, arg1, ...)
+    if event == "UNIT_SPELLCAST_SENT" then
+        local _, _, spellID = ...
+        if arg1 == "player" then OnCastAttempt(SpellName(spellID)) end
+        return
+    elseif event == "UNIT_SPELLCAST_FAILED" or event == "UNIT_SPELLCAST_FAILED_QUIET" then
+        local _, spellID = ...
+        if arg1 == "player" then OnCastAttempt(SpellName(spellID)) end
+        return
+    end
+    local _, spellID = ...
     if event == "ADDON_LOADED" then
         if arg1 ~= ADDON then return end
         TotemDistanceDB = TotemDistanceDB or {}
@@ -262,8 +368,12 @@ frame:SetScript("OnEvent", function(_, event, arg1, _, spellID)
             ns.UpdateAllSlots()
         end
     elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
-        if arg1 == "player" and MOVE_SPELLS[SpellName(spellID)] then
+        if arg1 ~= "player" then return end
+        local name = SpellName(spellID)
+        if MOVE_SPELLS[name] then
             ns.MoveTotemsToPlayer()
+        elseif not ns.NoteTotemCast(name) then
+            OnCastAttempt(name)
         end
     elseif event == "PLAYER_ENTERING_WORLD" then
         ns.UpdateAllSlots()
@@ -273,10 +383,12 @@ end)
 frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 frame:RegisterEvent("PLAYER_TOTEM_UPDATE")
-if frame.RegisterUnitEvent then
-    frame:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
-else
-    frame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
+for _, event in ipairs(CAST_EVENTS) do
+    if frame.RegisterUnitEvent then
+        frame:RegisterUnitEvent(event, "player")
+    else
+        frame:RegisterEvent(event)
+    end
 end
 
 -- The game doesn't always send PLAYER_TOTEM_UPDATE when a totem despawns, so
