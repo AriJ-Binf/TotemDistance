@@ -83,7 +83,6 @@ Open with `/totemdistance`, or in the game options under AddOns, TotemDistance. 
 ## Files
 
 - `TotemDistance.toc`: manifest, interface 16001, saved variable `TotemDistanceDB`.
-- `CHANGELOG.md`: what changed in each version.
 - `Data.lua`: elements, default colors, range table with each totem's element, range lookup.
 - `Core.lua`: totem tracking, totem placement, update loop.
 - `Tracker.lua`: tracker rows, leaving range and despawn warnings, sounds.
