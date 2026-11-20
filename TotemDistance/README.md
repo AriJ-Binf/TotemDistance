@@ -26,7 +26,9 @@ When you step out of a totem's range, a large red `Out of Strength of Earth rang
 
 ### Despawn warning
 
-Totems despawn once you are more than 100 yards away from them. When you get within 15 yards of that (adjustable), an orange `Strength of Earth is about to despawn!` warning appears below the leaving range warning, with its own sound, and the totem's bar shows `despawn in 8 yd`. The warning fires again only after you come back closer than that.
+Totems despawn once you are more than 100 yards away from them. When you get within 15 yards of that (adjustable), an orange `Strength of Earth is about to despawn!` warning appears below the leaving range warning, with its own sound, and the totem's bar shows `despawn in 8 yd`. The warning fires again only after you come back closer than that. Once you are more than 100 yards away the totem counts as despawned and its bar goes away.
+
+A bar also goes away when the totem's timer runs out or the game no longer lists the totem (destroyed, recalled, or replaced). `/totemdistance debug` shows the last few totems that left the tracker and why.
 
 ### Choosing which totems to track
 
@@ -66,7 +68,7 @@ Open with `/totemdistance`, or in the game options under AddOns, TotemDistance. 
 | `/totemdistance here` | Re-place all active totems around you as if just cast |
 | `/totemdistance test` | Toggle pretend totems where you stand |
 | `/totemdistance reset` | Reset all settings |
-| `/totemdistance debug` | Print diagnostics |
+| `/totemdistance debug` | Print diagnostics, including why recent totems left the tracker |
 
 `/tdist` works as a short alias.
 

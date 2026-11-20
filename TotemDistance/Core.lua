@@ -90,46 +90,115 @@ function ns.TotemPlacement(slot)
     return n + PLACE_DISTANCE * math.cos(a), w + PLACE_DISTANCE * math.sin(a)
 end
 
+-- How long the game must keep reporting an empty slot before its row goes away.
+-- A single empty read can be a blip while the totem is still up.
+local MISSING_GRACE = 0.5
+local POLL_INTERVAL = 0.25
+local HISTORY_SIZE = 8
+
+-- Returns "active" plus the totem's details, "none" for an empty slot, or
+-- "unknown" when the game hides the values (secret values) or the call fails.
 local function ReadTotem(slot)
-    local haveTotem, name, startTime, duration, icon, _, spellID = GetTotemInfo(slot)
-    if not haveTotem or type(name) ~= "string" or name == "" then
-        return nil
+    local ok, haveTotem, name, startTime, duration, icon, _, spellID = pcall(GetTotemInfo, slot)
+    if not ok then return "unknown" end
+    if ns.IsSecret(haveTotem) or ns.IsSecret(name) or ns.IsSecret(startTime) or ns.IsSecret(duration) then
+        return "unknown"
     end
-    return name, startTime, duration, spellID, icon
+    if not haveTotem or type(name) ~= "string" or name == "" then
+        return "none"
+    end
+    if ns.IsSecret(spellID) then spellID = nil end
+    return "active", name, startTime, duration, spellID, icon
 end
 
--- A totem's position is taken from where the player stood and faced when
--- PLAYER_TOTEM_UPDATE fired.
+-- Recent reasons a totem's row went away, newest first, for /totemdistance debug.
+ns.history = {}
+
+local function Remember(entry, reason)
+    table.insert(ns.history, 1, { time = GetTime(), name = entry.name, reason = reason })
+    ns.history[HISTORY_SIZE + 1] = nil
+end
+
+-- Hides a totem the game may still list. The entry stays so later reads of the
+-- same totem don't record it again at the player's feet.
+function ns.HideEntry(entry, reason)
+    if entry.hidden then return end
+    entry.hidden = reason
+    Remember(entry, reason)
+end
+
+local function Forget(slot, reason)
+    local entry = ns.state[slot]
+    if not entry then return end
+    if not entry.hidden then Remember(entry, reason) end
+    ns.state[slot] = nil
+end
+
+local function IsSameTotem(entry, name, startTime)
+    if entry.name ~= name then return false end
+    if type(entry.startTime) ~= "number" or type(startTime) ~= "number" then
+        return entry.startTime == startTime
+    end
+    return math.abs(entry.startTime - startTime) < 0.5
+end
+
 function ns.IsTracked(subject)
     return not (subject.base and ns.db.untracked[subject.base])
 end
 
+local function CheckTimer(entry)
+    if entry.expires and not entry.hidden and GetTime() >= entry.expires then
+        ns.HideEntry(entry, "timer ran out")
+    end
+end
+
+-- A totem's position is taken from where the player stood and faced when the
+-- game first reported it.
 function ns.UpdateSlot(slot)
-    local name, startTime, duration, spellID, icon = ReadTotem(slot)
-    if not name then
-        ns.state[slot] = nil
+    local status, name, startTime, duration, spellID, icon = ReadTotem(slot)
+    local entry = ns.state[slot]
+    if status == "unknown" then
+        if entry then CheckTimer(entry) end
         return
     end
 
-    local entry = ns.state[slot]
-    if not entry or entry.name ~= name or entry.startTime ~= startTime then
-        local range, source, verified = ns.ResolveRange(slot, name, spellID)
-        entry = {
-            name = name,
-            base = ns.BaseName(name),
-            startTime = startTime,
-            duration = duration,
-            spellID = spellID,
-            icon = icon,
-            range = range,
-            source = source,
-            verified = verified,
-        }
-        entry.worldN, entry.worldW = ns.TotemPlacement(slot)
-        ns.state[slot] = entry
-        if source == "default" then
-            ns.Print(string.format("No range known for \"%s\"; using %d yards. Use /totemdistance range %d <yards> to set it.", name, range, slot))
+    if status == "none" then
+        if not entry then return end
+        if entry.expires and GetTime() >= entry.expires - MISSING_GRACE then
+            return Forget(slot, "timer ran out")
         end
+        entry.missingSince = entry.missingSince or GetTime()
+        if GetTime() - entry.missingSince >= MISSING_GRACE then
+            Forget(slot, "game reports it gone (destroyed, recalled or despawned)")
+        end
+        return
+    end
+
+    if entry and IsSameTotem(entry, name, startTime) then
+        entry.missingSince = nil
+        CheckTimer(entry)
+        return
+    end
+
+    local range, source, verified = ns.ResolveRange(slot, name, spellID)
+    entry = {
+        name = name,
+        base = ns.BaseName(name),
+        startTime = startTime,
+        duration = duration,
+        spellID = spellID,
+        icon = icon,
+        range = range,
+        source = source,
+        verified = verified,
+    }
+    if type(startTime) == "number" and type(duration) == "number" and duration > 0 then
+        entry.expires = startTime + duration
+    end
+    entry.worldN, entry.worldW = ns.TotemPlacement(slot)
+    ns.state[slot] = entry
+    if source == "default" then
+        ns.Print(string.format("No range known for \"%s\"; using %d yards. Use /totemdistance range %d <yards> to set it.", name, range, slot))
     end
 end
 
@@ -163,9 +232,11 @@ function ns.MoveTotemsToPlayer()
     local moved = 0
     for slot = 1, NUM_SLOTS do
         local entry = ns.state[slot]
-        if entry then
+        if entry and entry.hidden ~= "timer ran out" then
             entry.worldN, entry.worldW = ns.TotemPlacement(slot)
+            entry.hidden = nil
             entry.wasOut = nil
+            entry.despawnWarned = nil
             moved = moved + 1
         end
     end
@@ -208,9 +279,17 @@ else
     frame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
 end
 
+-- The game doesn't always send PLAYER_TOTEM_UPDATE when a totem despawns, so
+-- the slots are also re-read on a timer.
 local sinceUpdate = 0
+local sincePoll = 0
 frame:SetScript("OnUpdate", function(_, elapsed)
     if not ns.db then return end
+    sincePoll = sincePoll + elapsed
+    if sincePoll >= POLL_INTERVAL then
+        sincePoll = 0
+        ns.UpdateAllSlots()
+    end
     sinceUpdate = sinceUpdate + elapsed
     if sinceUpdate < UPDATE_INTERVAL then return end
     ns.UpdateTracker(sinceUpdate)

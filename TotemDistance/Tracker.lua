@@ -290,6 +290,18 @@ local function UpdateRow(row, slot, subject)
     end
 end
 
+local function IsDespawned(subject)
+    if subject.hidden then return true end
+    local distance = ns.DistanceFromDrop(subject)
+    if distance and distance > ns.DESPAWN_YARDS then
+        ns.HideEntry(subject, string.format("you went more than %d yd away", ns.DESPAWN_YARDS))
+        HideAlert(alert, subject)
+        HideAlert(despawnAlert, subject)
+        return true
+    end
+    return false
+end
+
 function ns.UpdateTracker(elapsed)
     local db = ns.db
     pulse = pulse + (elapsed or 0)
@@ -303,7 +315,7 @@ function ns.UpdateTracker(elapsed)
             else
                 subject = ns.state[slot]
             end
-            if subject and ns.IsTracked(subject) then
+            if subject and ns.IsTracked(subject) and not IsDespawned(subject) then
                 shown = shown + 1
                 local row = rows[shown] or NewRow(shown)
                 rows[shown] = row

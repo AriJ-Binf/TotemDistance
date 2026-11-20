@@ -2,6 +2,15 @@
 
 All notable changes to TotemDistance. Newest first.
 
+## 1.4.2
+
+### Fixed
+- Tracker bars stayed on screen after their totem despawned. A totem's bar now goes away when its timer runs out, when you are more than 100 yards from it, or when the game stops listing it, even if the game never announces the change.
+- Tracker bars sometimes vanished while their totem was still up. A single empty or hidden reading from the game, which can happen in combat, no longer removes a bar; the totem has to be missing for half a second.
+
+### New
+- `/totemdistance debug` lists the last few totems that left the tracker and why: timer ran out, more than 100 yards away, or the game reports it gone.
+
 ## 1.4.1
 
 ### Fixed

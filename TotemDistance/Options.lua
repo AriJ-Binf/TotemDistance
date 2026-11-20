@@ -336,6 +336,17 @@ local function PrintDebug()
         else
             ns.Print(string.format("%s %d: no totem", label, slot))
         end
+        if entry and entry.hidden then
+            ns.Print(string.format("    hidden: %s", entry.hidden))
+        end
+    end
+    if #ns.history == 0 then
+        ns.Print("recently removed: none")
+    else
+        ns.Print("recently removed, newest first:")
+        for _, h in ipairs(ns.history) do
+            ns.Print(string.format("    %s, %ds ago: %s", h.name, math.floor(GetTime() - h.time), h.reason))
+        end
     end
 end
 
