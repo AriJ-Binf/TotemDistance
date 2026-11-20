@@ -1,6 +1,34 @@
-# Changelog
+# TotemDistance changelog
 
 All notable changes to TotemDistance. Newest first.
+
+## 1.5.2
+
+### Fixed
+- Totems dropped in combat, for example a recast Searing Totem after a Totemic Call, got no bar until combat ended. In combat the game hides totem details from addons, so the bar is now built from your cast instead. It shows right away, and once combat ends it picks up the game's real details without moving.
+- In combat, a bar's timer uses the duration the game last reported for that totem. The addon remembers durations between sessions.
+
+## 1.5.1
+
+### Fixed
+- A totem recast after its previous copy expired, for example Searing Totem after a Totemic Call, sometimes got no bar. The game can briefly report the new totem with the old totem's start time, which made it look already expired. A successful totem cast now always gets a fresh bar, timed from the cast.
+
+### Changed
+- `/totemdistance debug` also shows what the game reports for each totem slot: the totem's name, when it started, and how long it lasts.
+
+## 1.5.0
+
+### New
+- Casting Totemic Recall clears every tracker bar immediately. This also happens when the cast fails, for example when no totems are down or you are out of mana: pressing the button, a macro, or `/cast Totemic Recall` is enough. Totems you drop afterwards get new bars as usual.
+
+## 1.4.2
+
+### Fixed
+- Tracker bars stayed on screen after their totem despawned. A totem's bar now goes away when its timer runs out, when you are more than 100 yards from it, or when the game stops listing it, even if the game never announces the change.
+- Tracker bars sometimes vanished while their totem was still up. A single empty or hidden reading from the game, which can happen in combat, no longer removes a bar; the totem has to be missing for half a second.
+
+### New
+- `/totemdistance debug` lists the last few totems that left the tracker and why: timer ran out, more than 100 yards away, or the game reports it gone.
 
 ## 1.4.1
 
