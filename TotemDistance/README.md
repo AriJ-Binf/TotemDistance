@@ -74,7 +74,7 @@ Open with `/totemdistance`, or in the game options under AddOns, TotemDistance. 
 
 ## Known limits
 
-- In dungeons and raids your position is hidden from addons, so the tracker shows `no position here` and no warnings fire.
+- In dungeons and raids your position is hidden from addons, so there are no yards and no despawn warning. Bars show the totem's time left instead. Totems that put a buff on you while you're in range (Strength of Earth, Mana Spring, Grace of Air, Stoneskin, resistance totems and others) show `in range` or `OUT of range` from that buff, with the usual warning. The addon learns each totem's buff the first time it sees it. Totems without a buff (Searing, Magma, Earthbind, Tremor and others) show `range unknown here`. If the game hides buffs in combat, those totems also show `range unknown here` until it shows them again.
 - In combat the game hides totem details from addons. Totems dropped in combat get a bar built from your cast, timed with the duration the game last reported for that totem. The first time you ever drop a totem in combat, before the addon has seen its duration, its bar has no timer until combat ends.
 - Totem placement (2.5 yards, in the pattern above) follows the original game's behavior and may be off by a yard or so.
 - Totem names are matched in English. On other locales, ranges come from the spell tooltip, which also expects English "yards" text. Use `/totemdistance range` to set them manually.

@@ -339,6 +339,9 @@ local function PrintDebug()
         if entry and entry.hidden then
             ns.Print(string.format("    hidden: %s", entry.hidden))
         end
+        if entry then
+            ns.Print(string.format("    range by buff: %s", ns.AuraRangeState(entry) or "unknown (no buff seen yet, or buffs hidden)"))
+        end
         local ok, have, name, start, duration = pcall(GetTotemInfo, slot)
         if ok and not (ns.IsSecret(have) or ns.IsSecret(name) or ns.IsSecret(start) or ns.IsSecret(duration)) then
             if not have or name == "" then

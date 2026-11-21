@@ -22,6 +22,9 @@ ns.defaults = {
     untracked = {},
     -- Last duration the game reported for each totem, used for bars made in combat.
     durations = {},
+    -- Totems whose buff has been seen on the player, by aura name; in dungeons
+    -- their range is judged by that buff.
+    auraTotems = {},
     point = {},
     colors = {},
     rangeOverrides = {},
@@ -90,6 +93,71 @@ function ns.TotemPlacement(slot)
     if not facing then return n, w end
     local a = facing + PLACE_ANGLES[slot]
     return n + PLACE_DISTANCE * math.cos(a), w + PLACE_DISTANCE * math.sin(a)
+end
+
+-- In dungeons and raids the game hides positions, but many totems keep a buff
+-- named after the totem on the player while in range. A totem whose buff has
+-- been seen once is judged by that buff wherever distance is unknown.
+local AURA_SCAN_INTERVAL = 0.2
+-- Seconds after a drop before a missing buff counts, while the first one lands.
+local AURA_GRACE = 3
+-- Seconds a buff must stay missing, so a refresh blink isn't read as leaving.
+local AURA_MISSING = 1.5
+local lastAuraScan, playerAuras = -math.huge, nil
+
+local function AuraKey(name)
+    return (ns.BaseName(name):gsub(" totem$", ""))
+end
+
+-- Set of the player's buff names (as AuraKey), or nil when the game hides them.
+-- Buffs cast by party or raid members, such as another shaman's totems, are skipped.
+local function ScanAuras()
+    local byIndex = C_UnitAuras and C_UnitAuras.GetAuraDataByIndex
+    if not (byIndex or UnitBuff) then return nil end
+    local found = {}
+    for i = 1, 40 do
+        local ok, name, source
+        if byIndex then
+            local aura
+            ok, aura = pcall(byIndex, "player", i, "HELPFUL")
+            if not ok then return nil end
+            if not aura then break end
+            name, source = aura.name, aura.sourceUnit
+        else
+            local _
+            ok, name, _, _, _, _, _, source = pcall(UnitBuff, "player", i)
+            if not ok then return nil end
+            if not name then break end
+        end
+        if ns.IsSecret(name) then return nil end
+        if ns.IsSecret(source) or type(source) ~= "string" then source = nil end
+        local other = source and (source:find("^party") or source:find("^raid"))
+        if type(name) == "string" and not other then found[AuraKey(name)] = true end
+    end
+    return found
+end
+
+-- "in" or "out" judged by the totem's buff on the player, or nil when the
+-- totem has no known buff or the game hides buffs.
+function ns.AuraRangeState(subject)
+    if not subject.base then return nil end
+    local now = GetTime()
+    if now - lastAuraScan >= AURA_SCAN_INTERVAL then
+        playerAuras = ScanAuras()
+        lastAuraScan = now
+    end
+    if not playerAuras then return nil end
+    local key = AuraKey(subject.base)
+    if playerAuras[key] then
+        ns.db.auraTotems[key] = true
+        subject.auraMissingSince = nil
+        return "in"
+    end
+    if not ns.db.auraTotems[key] then return nil end
+    if now - (subject.placedAt or subject.createdAt or 0) < AURA_GRACE then return "in" end
+    subject.auraMissingSince = subject.auraMissingSince or now
+    if now - subject.auraMissingSince < AURA_MISSING then return "in" end
+    return "out"
 end
 
 -- How long the game must keep reporting an empty slot before its row goes away.
@@ -360,6 +428,8 @@ function ns.MoveTotemsToPlayer()
         local entry = ns.state[slot]
         if entry and entry.hidden ~= "timer ran out" then
             entry.worldN, entry.worldW = ns.TotemPlacement(slot)
+            entry.placedAt = GetTime()
+            entry.auraMissingSince = nil
             entry.hidden = nil
             entry.wasOut = nil
             entry.despawnWarned = nil

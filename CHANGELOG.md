@@ -2,6 +2,16 @@
 
 All notable changes to TotemDistance. Newest first.
 
+## 1.6.0
+
+### New
+- Dungeons and raids: the game hides your position there, so bars used to turn grey with no distance. Now:
+  - Totems that put a buff on you while you're in range (for example Strength of Earth, Mana Spring, Grace of Air, Stoneskin and the resistance totems) show **in range** in green or **OUT of range** in red, judged by that buff. The leaving range warning and sound work as usual.
+  - Every bar shows the totem's time left instead of yards.
+  - Totems without a buff, like Searing, Magma, Earthbind or Tremor, show "range unknown here".
+- The addon learns which totems have a buff the first time it sees that buff on you, anywhere, and remembers it between sessions. Buffs from another shaman's totems are ignored.
+- `/totemdistance debug` shows whether each totem's range is being judged by its buff.
+
 ## 1.5.2
 
 ### Fixed

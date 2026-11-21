@@ -237,13 +237,29 @@ local function UpdateRow(row, slot, subject)
     row.icon:SetTexture(subject.icon or TEST_ICONS[slot])
     row.label:SetText(ShortName(subject.name))
 
-    local color, out, nearDespawn
+    local color, out, nearDespawn, auraState
     if not distance then
-        color = GREY
-        row.bar:SetValue(1)
-        row.barText:SetText("? / " .. range .. " yd")
-        row.status:SetText("no position here")
+        -- No position (dungeons and raids): the bar shows time left, and the
+        -- totem's buff, when it has one, says whether the player is in range.
+        auraState = ns.AuraRangeState(subject)
+        local expires, startTime = subject.expires, subject.startTime
+        local left = expires and math.max(0, expires - GetTime())
+        local total = left and type(startTime) == "number" and expires - startTime
+        row.bar:SetValue(total and total > 0 and math.min(1, left / total) or 1)
+        row.barText:SetText(left and string.format("%d s left", math.ceil(left)) or "")
+        if auraState == "in" then
+            color = GREEN
+            row.status:SetText("in range")
+        elseif auraState == "out" then
+            color = RED
+            out = true
+            row.status:SetText("OUT of range")
+        else
+            color = GREY
+            row.status:SetText("range unknown here")
+        end
     else
+        ns.AuraRangeState(subject)
         local remaining = range - distance
         out = remaining < 0
         row.bar:SetValue(math.max(0, math.min(1, remaining / range)))
@@ -282,7 +298,7 @@ local function UpdateRow(row, slot, subject)
     elseif not out then
         HideAlert(alert, subject)
     end
-    if distance then subject.wasOut = out end
+    if distance or auraState then subject.wasOut = out end
 
     if nearDespawn and not subject.despawnWarned then
         subject.despawnWarned = true
